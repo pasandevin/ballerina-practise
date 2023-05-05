@@ -15,8 +15,39 @@ public final table<CovidEntry> key(iso_code) covidTable = table [
     {iso_code: "US", country: "USA", cases: 69808350, deaths: 880976, recovered: 43892277, active: 25035097}
 ];
 
+
+public type ConflictingIsoCodesError record {|
+    *http:Conflict;
+    ErrorMsg body;
+|};
+
+public type ErrorMsg record {|
+    string errmsg;
+|};
+
+
 service /covid/status on new http:Listener(9000) {
     resource function get countries() returns CovidEntry[] {
         return covidTable.toArray();
     }
+
+
+    resource function post countries(@http:Payload CovidEntry[] covidEntries)
+                                    returns CovidEntry[]|ConflictingIsoCodesError {
+
+    string[] conflictingISOs = from CovidEntry covidEntry in covidEntries
+        where covidTable.hasKey(covidEntry.iso_code)
+        select covidEntry.iso_code;
+
+    if conflictingISOs.length() > 0 {
+        return {
+            body: {
+                errmsg: string:'join(" ", "Conflicting ISO Codes:", ...conflictingISOs)
+            }
+        };
+    } else {
+        covidEntries.forEach(covdiEntry => covidTable.add(covdiEntry));
+        return covidEntries;
+    }
+}
 }
